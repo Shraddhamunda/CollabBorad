@@ -1,17 +1,27 @@
+
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+
+import Dashboard from "./components/Dashboard";
+import WorkspacePage from "./components/WorkspacePage";
+
 function App() {
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-blue-600">
-          CollabBoard
-        </h1>
-
-        <p className="mt-3 text-gray-600">
-          Real-Time Collaborative Whiteboard
-        </p>
-      </div>
-    </div>
-  )
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route
+          path="/workspace/:workspaceId"
+          element={<WorkspacePage />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;

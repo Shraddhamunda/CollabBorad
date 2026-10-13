@@ -6,6 +6,8 @@ const cors = require("cors");
 const pool = require("./db");
 const authRoutes = require("./routes/authRoutes");
 const workspaceRoutes = require("./routes/workspaceRoutes");
+const boardRoutes = require("./routes/boardRoutes");
+const boardElementRoutes = require("./routes/boardElementRoutes");
 
 const app = express();
 
@@ -13,6 +15,8 @@ app.use(cors());
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/workspaces", workspaceRoutes);
+app.use("/api/boards", boardRoutes);
+app.use("/api/boards", boardElementRoutes);
 
 const PORT = 5000;
 

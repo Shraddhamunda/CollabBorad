@@ -31,7 +31,7 @@ app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/boards", boardRoutes);
 app.use("/api/boards", boardElementRoutes);
 
-const PORT = 5000;
+const PORT = 8000;
 
 app.get("/", (req, res) => {
   res.send("CollabBoard Backend is Running!");

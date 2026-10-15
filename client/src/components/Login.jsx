@@ -27,14 +27,15 @@ function Login() {
         throw new Error("Login response did not contain a token.");
       }
 
-      localStorage.setItem("token", token);
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("user", JSON.stringify(response.data.user));
 
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(
         err.response?.data?.message ||
           err.message ||
-          "Login failed. Please try again."
+          "Login failed. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -48,9 +49,7 @@ function Login() {
           COLLABBOARD
         </p>
 
-        <h1 className="mt-3 text-2xl font-bold text-slate-900">
-          Welcome back
-        </h1>
+        <h1 className="mt-3 text-2xl font-bold text-slate-900">Welcome back</h1>
 
         <p className="mt-2 text-sm text-slate-600">
           Log in to access your workspaces.
@@ -88,7 +87,10 @@ function Login() {
           </div>
 
           {error && (
-            <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            <p
+              role="alert"
+              className="rounded-lg bg-red-50 p-3 text-sm text-red-700"
+            >
               {error}
             </p>
           )}
@@ -104,7 +106,10 @@ function Login() {
 
         <p className="mt-5 text-center text-sm text-slate-600">
           Don't have an account?{" "}
-          <Link to="/signup" className="font-semibold text-blue-600 hover:underline">
+          <Link
+            to="/signup"
+            className="font-semibold text-blue-600 hover:underline"
+          >
             Sign up
           </Link>
         </p>

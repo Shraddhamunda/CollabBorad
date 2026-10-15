@@ -111,19 +111,35 @@ function Dashboard() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/signup", { replace: true });
+  };
+
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10">
       <div className="mx-auto max-w-5xl">
-        <header className="mb-10">
-          <p className="text-sm font-semibold text-blue-600">COLLABBOARD</p>
+        <header className="mb-10 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-blue-600">COLLABBOARD</p>
 
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">
-            Your Workspaces
-          </h1>
+            <h1 className="mt-2 text-3xl font-bold text-slate-900">
+              Your Workspaces
+            </h1>
 
-          <p className="mt-2 text-slate-600">
-            Create a workspace and collaborate with your team.
-          </p>
+            <p className="mt-2 text-slate-600">
+              Create a workspace and collaborate with your team.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-lg border border-red-200 bg-white px-4 py-2 font-medium text-red-600 transition hover:bg-red-50"
+          >
+            Logout
+          </button>
         </header>
 
         <section className="mb-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import API from "../api/axios";
+import socket from "../socket.js";
 
 function Whiteboard({ workspaceId, boardId }) {
   const canvasRef = useRef(null);
@@ -9,11 +10,14 @@ function Whiteboard({ workspaceId, boardId }) {
   const historyRef = useRef([]);
   const historyIndexRef = useRef(-1);
 
+
   const [tool, setTool] = useState("pen");
   const [color, setColor] = useState("#2563eb");
   const [brushSize, setBrushSize] = useState(4);
 
   const [elements, setElements] = useState([]);
+  const elementsRef = useRef([]);
+
   const [draft, setDraft] = useState(null);
 
   const [textInput, setTextInput] = useState("");
@@ -128,6 +132,54 @@ function Whiteboard({ workspaceId, boardId }) {
     }
   }, [elements, draft]);
 
+
+useEffect(() => {
+  elementsRef.current = elements;
+}, [elements]);
+
+
+useEffect(() => {
+  if (!boardId) return;
+
+  socket.connect();
+  socket.emit("join-board", boardId);
+
+  const handleDrawingUpdate = ({ element }) => {
+    if (!element) return;
+
+    const nextElements = [...elementsRef.current, element];
+    elementsRef.current = nextElements;
+    setElements(nextElements);
+    recordHistory(nextElements);
+  };
+
+  const handleClearBoard = () => {
+    elementsRef.current = [];
+    setElements([]);
+    setDraft(null);
+    currentElementRef.current = null;
+    isDrawing.current = false;
+
+    historyRef.current = [[]];
+    historyIndexRef.current = 0;
+    updateHistoryButtons();
+
+    setTextInput("");
+    setTextPosition(null);
+  };
+
+  socket.on("drawing-update", handleDrawingUpdate);
+  socket.on("clear-board", handleClearBoard);
+
+  return () => {
+    socket.off("drawing-update", handleDrawingUpdate);
+    socket.off("clear-board", handleClearBoard);
+    socket.emit("leave-board", boardId);
+    socket.disconnect();
+  };
+}, [boardId]);
+
+
   // Set canvas resolution for sharp rendering.
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -213,12 +265,19 @@ function Whiteboard({ workspaceId, boardId }) {
   };
 
   // Add a completed element locally. No database request here.
-  const addElementLocally = (element) => {
-    const nextElements = [...elements, element];
 
-    setElements(nextElements);
-    recordHistory(nextElements);
-  };
+const addElementLocally = (element) => {
+  const nextElements = [...elementsRef.current, element];
+
+  elementsRef.current = nextElements;
+  setElements(nextElements);
+  recordHistory(nextElements);
+
+  socket.emit("drawing-update", {
+    boardId,
+    element,
+  });
+};
 
   // Save the complete canvas with one API request.
   const saveDrawing = async () => {
@@ -407,7 +466,10 @@ function Whiteboard({ workspaceId, boardId }) {
         { headers: getAuthHeaders() }
       );
 
+      socket.emit("clear-board", boardId);
+
       setElements([]);
+      elementsRef.current = [];
       setDraft(null);
       currentElementRef.current = null;
       isDrawing.current = false;

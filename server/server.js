@@ -38,18 +38,45 @@ app.get("/", (req, res) => {
 });
 
 // Socket.IO connection
+
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
+  // Join a specific whiteboard room
   socket.on("join-board", (boardId) => {
+    if (!boardId) return;
+
     socket.join(`board-${boardId}`);
     console.log(`User joined board: ${boardId}`);
   });
+
+  // Broadcast a completed drawing to other users
+  socket.on("drawing-update", ({ boardId, element }) => {
+    if (!boardId || !element) return;
+
+    socket.to(`board-${boardId}`).emit("drawing-update", {
+      element,
+    });
+  });
+
+  // Notify other users when the board is cleared
+  socket.on("clear-board", (boardId) => {
+    if (!boardId) return;
+
+    socket.to(`board-${boardId}`).emit("clear-board");
+  });
+
+  socket.on("leave-board", (boardId) => {
+  if (!boardId) return;
+
+  socket.leave(`board-${boardId}`);
+});
 
   socket.on("disconnect", () => {
     console.log("A user disconnected:", socket.id);
   });
 });
+
 
 // Test PostgreSQL connection
 pool.query("SELECT NOW()")

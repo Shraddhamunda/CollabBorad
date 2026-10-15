@@ -29,7 +29,6 @@ function Whiteboard({ workspaceId, boardId }) {
     Authorization: `Bearer ${localStorage.getItem("token")}`,
   });
 
-  // Keep Undo and Redo history for the current session.
   const updateHistoryButtons = () => {
     setCanUndo(historyIndexRef.current > 0);
     setCanRedo(
@@ -43,14 +42,14 @@ function Whiteboard({ workspaceId, boardId }) {
       historyIndexRef.current + 1
     );
 
-    nextHistory.push(nextElements);
+    nextHistory.push([...nextElements]);
     historyRef.current = nextHistory;
     historyIndexRef.current = nextHistory.length - 1;
 
     updateHistoryButtons();
   };
 
-  // Draw one saved element on the canvas.
+  // Render a single element.
   const renderElement = (ctx, element) => {
     const type = element.element_type;
     const x = Number(element.x) || 0;
@@ -67,11 +66,8 @@ function Whiteboard({ workspaceId, boardId }) {
     ctx.strokeStyle = strokeColor;
     ctx.fillStyle = strokeColor;
 
-    if (type === "eraser") {
-      ctx.globalCompositeOperation = "destination-out";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-    }
+    ctx.globalCompositeOperation =
+      type === "eraser" ? "destination-out" : "source-over";
 
     if (type === "pen" || type === "eraser") {
       const points = Array.isArray(element.points)
@@ -113,7 +109,7 @@ function Whiteboard({ workspaceId, boardId }) {
     ctx.restore();
   };
 
-  // Redraw all elements in order.
+  // Redraw the canvas from the current elements.
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -132,7 +128,7 @@ function Whiteboard({ workspaceId, boardId }) {
     }
   }, [elements, draft]);
 
-  // Set up the canvas size for sharp rendering.
+  // Set canvas resolution for sharp rendering.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -155,7 +151,7 @@ function Whiteboard({ workspaceId, boardId }) {
     };
   }, [redrawCanvas]);
 
-  // Load saved drawings when the board opens.
+  // Load the saved drawing when the board opens.
   useEffect(() => {
     if (!boardId) {
       setLoading(false);
@@ -180,7 +176,7 @@ function Whiteboard({ workspaceId, boardId }) {
         const savedElements = response.data.elements || [];
 
         setElements(savedElements);
-        historyRef.current = [savedElements];
+        historyRef.current = [[...savedElements]];
         historyIndexRef.current = 0;
         updateHistoryButtons();
       } catch (err) {
@@ -203,7 +199,6 @@ function Whiteboard({ workspaceId, boardId }) {
     };
   }, [boardId]);
 
-  // Redraw whenever loaded or newly created elements change.
   useEffect(() => {
     redrawCanvas();
   }, [redrawCanvas]);
@@ -217,44 +212,47 @@ function Whiteboard({ workspaceId, boardId }) {
     };
   };
 
-  // Persist a completed drawing element through the backend.
-  const saveElement = async (element) => {
+  // Add a completed element locally. No database request here.
+  const addElementLocally = (element) => {
+    const nextElements = [...elements, element];
+
+    setElements(nextElements);
+    recordHistory(nextElements);
+  };
+
+  // Save the complete canvas with one API request.
+  const saveDrawing = async () => {
+    if (!boardId || loading || saving || isDrawing.current) return;
+
     setSaving(true);
     setError("");
 
     try {
-      const response = await API.post(
-        `/boards/${boardId}/elements`,
-        element,
+      await API.put(
+        `/boards/${boardId}/elements/save`,
+        { elements },
         { headers: getAuthHeaders() }
       );
 
-      const savedElement = response.data.element;
-
-      setElements((previous) => {
-        const next = [...previous, savedElement];
-        recordHistory(next);
-        return next;
-      });
+      setError("");
     } catch (err) {
       console.error("Save drawing error:", err);
       setError(
         err.response?.data?.message ||
-          "Could not save this drawing. Please try again."
+          "Could not save the drawing. Please try again."
       );
     } finally {
       setSaving(false);
     }
   };
 
-  // Start a pen, eraser, or shape action.
+  // Begin drawing a stroke or shape.
   const startDrawing = (event) => {
-    if (loading || !boardId || tool === "text") return;
+    if (loading || saving || !boardId || tool === "text") return;
 
     event.preventDefault();
 
     const position = getPosition(event);
-
     isDrawing.current = true;
 
     const isFreehand = tool === "pen" || tool === "eraser";
@@ -273,20 +271,20 @@ function Whiteboard({ workspaceId, boardId }) {
 
     setDraft(currentElementRef.current);
 
-    if (event.currentTarget.setPointerCapture) {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    }
+    event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
-  // Update the current drawing while the pointer moves.
+  // Update the current stroke or shape.
   const continueDrawing = (event) => {
     if (!isDrawing.current || !currentElementRef.current) return;
 
     const position = getPosition(event);
     const current = currentElementRef.current;
 
-    if (current.element_type === "pen" ||
-        current.element_type === "eraser") {
+    if (
+      current.element_type === "pen" ||
+      current.element_type === "eraser"
+    ) {
       currentElementRef.current = {
         ...current,
         points: [...current.points, position],
@@ -302,8 +300,8 @@ function Whiteboard({ workspaceId, boardId }) {
     setDraft({ ...currentElementRef.current });
   };
 
-  // Save the completed stroke or shape.
-  const stopDrawing = async (event) => {
+  // Finish drawing locally. No database request per stroke.
+  const stopDrawing = (event) => {
     if (!isDrawing.current) return;
 
     isDrawing.current = false;
@@ -312,7 +310,9 @@ function Whiteboard({ workspaceId, boardId }) {
     currentElementRef.current = null;
     setDraft(null);
 
-    if (event?.currentTarget?.hasPointerCapture?.(event.pointerId)) {
+    if (
+      event?.currentTarget?.hasPointerCapture?.(event.pointerId)
+    ) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
@@ -321,32 +321,32 @@ function Whiteboard({ workspaceId, boardId }) {
     const hasPoints =
       Array.isArray(element.points) && element.points.length > 0;
 
-    const hasShape =
-      element.element_type === "rectangle" ||
-      element.element_type === "circle" ||
-      element.element_type === "line";
+    const isShape = [
+      "rectangle",
+      "circle",
+      "line",
+    ].includes(element.element_type);
 
     if (
-      (hasPoints || hasShape) &&
-      (hasPoints || element.width !== 0 || element.height !== 0)
+      hasPoints ||
+      (isShape && (element.width !== 0 || element.height !== 0))
     ) {
-      await saveElement(element);
+      addElementLocally(element);
     }
   };
 
-  // Choose where text should appear.
   const placeText = (event) => {
-    if (tool !== "text" || loading) return;
+    if (tool !== "text" || loading || saving) return;
 
     setTextPosition(getPosition(event));
     setTextInput("");
   };
 
-  // Add and save text.
-  const addTextToCanvas = async () => {
+  // Add text locally. Save Drawing persists it.
+  const addTextToCanvas = () => {
     if (!textInput.trim() || !textPosition || !boardId) return;
 
-    await saveElement({
+    const element = {
       element_type: "text",
       x: textPosition.x,
       y: textPosition.y,
@@ -356,39 +356,77 @@ function Whiteboard({ workspaceId, boardId }) {
       text_content: textInput.trim(),
       stroke_color: color,
       stroke_width: Number(brushSize),
-    });
+    };
+
+    addElementLocally(element);
 
     setTextInput("");
     setTextPosition(null);
   };
 
-  // Undo in the current browser session.
   const undo = () => {
     if (historyIndexRef.current <= 0) return;
 
     historyIndexRef.current -= 1;
-    setElements(historyRef.current[historyIndexRef.current]);
+
+    setElements([
+      ...historyRef.current[historyIndexRef.current],
+    ]);
+
     updateHistoryButtons();
   };
 
-  // Redo in the current browser session.
   const redo = () => {
     if (historyIndexRef.current >= historyRef.current.length - 1) {
       return;
     }
 
     historyIndexRef.current += 1;
-    setElements(historyRef.current[historyIndexRef.current]);
+
+    setElements([
+      ...historyRef.current[historyIndexRef.current],
+    ]);
+
     updateHistoryButtons();
   };
 
-  // Clear the canvas in the current browser session.
-  const clearCanvas = () => {
-    if (elements.length === 0) return;
+  // Clear the saved canvas as well as the local canvas.
+  const clearCanvas = async () => {
+    if (!boardId || loading || saving) return;
 
-    const emptyElements = [];
-    setElements(emptyElements);
-    recordHistory(emptyElements);
+    if (!window.confirm("Clear the canvas for everyone using this board?")) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await API.delete(
+        `/boards/${boardId}/elements/clear`,
+        { headers: getAuthHeaders() }
+      );
+
+      setElements([]);
+      setDraft(null);
+      currentElementRef.current = null;
+      isDrawing.current = false;
+
+      historyRef.current = [[]];
+      historyIndexRef.current = 0;
+      updateHistoryButtons();
+
+      setTextInput("");
+      setTextPosition(null);
+    } catch (err) {
+      console.error("Clear canvas error:", err);
+      setError(
+        err.response?.data?.message ||
+          "Could not clear the saved canvas. Please try again."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -440,7 +478,7 @@ function Whiteboard({ workspaceId, boardId }) {
         <button
           type="button"
           onClick={undo}
-          disabled={!canUndo}
+          disabled={!canUndo || loading || saving}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-40"
         >
           Undo
@@ -449,7 +487,7 @@ function Whiteboard({ workspaceId, boardId }) {
         <button
           type="button"
           onClick={redo}
-          disabled={!canRedo}
+          disabled={!canRedo || loading || saving}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-40"
         >
           Redo
@@ -457,8 +495,18 @@ function Whiteboard({ workspaceId, boardId }) {
 
         <button
           type="button"
+          onClick={saveDrawing}
+          disabled={loading || saving}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save Drawing"}
+        </button>
+
+        <button
+          type="button"
           onClick={clearCanvas}
-          className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100"
+          disabled={loading || saving}
+          className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-50"
         >
           Clear Canvas
         </button>
@@ -535,6 +583,7 @@ function Whiteboard({ workspaceId, boardId }) {
               ? "Saving drawing..."
               : "Board ready"}
         </span>
+
         <span>
           Workspace: {workspaceId || "Unknown"} · Board: {boardId || "Unknown"}
         </span>
